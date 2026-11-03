@@ -64,7 +64,14 @@ pipeline {
 
     post {
         always {
-            sh 'echo "===== Resumen ====="; grep -A6 "Scan Summary" semgrep.txt || true'
+            // Resumen de Semgrep contado desde el JSON (el "Scan Summary" no se escribe en semgrep.txt)
+            sh '''
+                echo "===== Resumen Semgrep ====="
+                if [ -f semgrep.json ]; then
+                    echo "Hallazgos totales: $(grep -o '"check_id"' semgrep.json | wc -l)"
+                    grep -o '"severity": *"[A-Z]*"' semgrep.json | sort | uniq -c || true
+                fi
+            '''
         }
     }
 }
