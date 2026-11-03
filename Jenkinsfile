@@ -18,8 +18,6 @@ pipeline {
     }
 
     environment {
-        REPO_URL        = 'https://github.com/grupo85023/WebsVulnerables-P2'
-        REPO_BRANCH     = 'main'
         SEMGREP_IMAGE   = 'semgrep/semgrep:latest'
         ZAP_IMAGE       = 'ghcr.io/zaproxy/zaproxy:stable'
         ZAP_PORT        = '8099'
@@ -37,7 +35,7 @@ pipeline {
                 // El workspace persiste entre builds: borrar los resultados del anterior para que
                 // Semgrep no analice los informes de ZAP ni se archiven ficheros viejos.
                 sh 'rm -rf zap semgrep.json semgrep.sarif semgrep.txt compose.ci.yml'
-                git url: env.REPO_URL, branch: env.REPO_BRANCH
+                checkout scm   // mismo repo que la tarea: evita builds en bucle con pollSCM
                 // Los datos de MySQL (db_data) deben quedar exactamente como en el repositorio: MySQL
                 // modifica ficheros con seguimiento y crea otros nuevos (redo logs, binlogs); si se
                 // mezclan con los restaurados por Git, InnoDB no arranca ("Missing redo log file").
