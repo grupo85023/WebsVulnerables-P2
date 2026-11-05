@@ -1,8 +1,11 @@
 <?php
 // Login de Mordor - Portal de Sauron
-// Sesiones PHP reales (sin httpOnly para permitir robo de cookie vía XSS)
-
-ini_set('session.cookie_httponly', 0);
+// §8 CORREGIDO (Session Hijacking): cookie de sesión protegida
+// VULNERABLE original (cookie legible por JavaScript -> robable vía XSS):
+//   // Sesiones PHP reales (sin httpOnly para permitir robo de cookie vía XSS)
+//   ini_set('session.cookie_httponly', 0);
+ini_set('session.cookie_httponly', 1);   // la cookie deja de ser accesible desde document.cookie
+ini_set('session.cookie_samesite', 'Strict');
 session_name("lotrCookie");
 session_start();
 

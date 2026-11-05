@@ -1,6 +1,10 @@
 <?php
 // VULNERABLE: Path Traversal via lang parameter
 $lang = $_GET['lang'] ?? 'es.php';
+$allowed_langs = ['es.php', 'en.php'];
+if (!in_array($lang, $allowed_langs, true)) {
+    $lang = 'es.php';
+}
 
 require_once __DIR__ . '/db.php';
 

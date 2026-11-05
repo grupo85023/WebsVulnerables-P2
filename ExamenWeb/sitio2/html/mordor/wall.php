@@ -258,10 +258,16 @@ $messages = $conn->query("SELECT * FROM orc_messages ORDER BY created_at DESC");
                                 </form>
                             <?php endif; ?>
 
-                            <div class="author"><?php echo $msg['author']; ?></div>
+                            <!-- §2 CORREGIDO (Stored XSS): salida escapada con htmlspecialchars() -->
+                            <div class="author"><?php
+                                // VULNERABLE original (sin escapar): echo $msg['author'];
+                                echo htmlspecialchars($msg['author'], ENT_QUOTES, 'UTF-8');
+                            ?></div>
 
-                            <!-- XSS VULNERABILITY HERE: Message is printed without htmlspecialchars() -->
-                            <div class="text"><?php echo $msg['message']; ?></div>
+                            <div class="text"><?php
+                                // VULNERABLE original (sin escapar): echo $msg['message'];
+                                echo htmlspecialchars($msg['message'], ENT_QUOTES, 'UTF-8');
+                            ?></div>
 
                             <div class="time"><?php echo $msg['created_at']; ?></div>
                         </div>

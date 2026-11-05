@@ -26,16 +26,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['sys_file'])) {
 
     // VULNERABILIDAD: Validación débil de extensión
     // Solo comprueba si contiene ".jpg", permitiendo "shell.php.jpg" o similar.
-    if (strpos($filename, '.jpg') !== false) {
-        if (move_uploaded_file($tmp_name, $upload_dir . $filename)) {
-            $msg = "Archivo de sistema subido correctamente: " . htmlspecialchars($filename);
-        } else {
-            $error = "Error al mover el archivo al repositorio de sistemas.";
-        }
+
+$ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+$valid_ext = ($ext === 'jpg' || $ext === 'jpeg');
+$valid_image = $valid_ext && @getimagesize($tmp_name) !== false;
+
+if ($valid_image) {
+    $safe_name = bin2hex(random_bytes(8)) . '.jpg'; // nombre nuevo, no el del atacante
+    if (move_uploaded_file($tmp_name, $upload_dir . $safe_name)) {
+        $msg = "Archivo de sistema subido correctamente: " . htmlspecialchars($safe_name);
+        $filename = $safe_name;
     } else {
-        $error = "Formato no válido. El sistema solo acepta esquemas visuales (.jpg).";
+        $error = "Error al mover el archivo al repositorio de sistemas.";
     }
+} else {
+    $error = "Formato no válido. El sistema solo acepta esquemas visuales (.jpg).";
 }
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="es">

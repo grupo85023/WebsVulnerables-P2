@@ -83,7 +83,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ip'])) {
     } else {
         // Execució de la comanda original (Vulnerable si passa el filtre)
         $param = (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') ? '-n' : '-c';
-        $output = shell_exec("ping $param 1 " . $ip);
+        // CORREGIDO: solo se acepta una IP válida y se escapa como argumento (sin inyección de comandos)
+        if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            $output = "Dirección IP no válida.";
+        } else {
+            $output = shell_exec("ping $param 1 " . escapeshellarg($ip));
+        }
     }
 
     if (empty($output)) {
