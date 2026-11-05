@@ -19,9 +19,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pass = $_POST['pass'] ?? '';
 
     // VULNERABLE: SQL Injection - No prepared statements, no sanitization
-    $query = "SELECT * FROM users WHERE user='$user' AND pass='$pass'";
-    $result = $conn->query($query);
-
+    // CORREGIDO: sentencia preparada, los datos van separados de la consulta SQL
+    $stmt = $conn->prepare("SELECT	 * FROM users WHERE user = ? AND pass = ?");
+    $stmt->bind_param("ss", $user, $pass);
+    $stmt->execute();
+    $result = $stmt->get_result();
     if ($result && $result->num_rows > 0) {
         $row = $result->fetch_assoc();
         $_SESSION['logged_in'] = true;
