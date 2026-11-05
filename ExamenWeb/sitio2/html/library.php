@@ -44,7 +44,7 @@ $file = $_GET['file'] ?? 'historia.txt';
                     if (file_exists($path)) {
                         echo htmlspecialchars(file_get_contents($path));
                     } else {
-                        echo "El pergamino '$file' no se ha encontrado en los archivos de Mordor.";
+                        echo "El pergamino '" . htmlspecialchars($file, ENT_QUOTES, 'UTF-8') . "' no se ha encontrado en los archivos de Mordor."; // CORREGIDO: salida escapada (XSS)
                     }
                 }
                 ?>
