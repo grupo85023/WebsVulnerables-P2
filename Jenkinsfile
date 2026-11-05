@@ -27,6 +27,13 @@ pipeline {
         // sitio:puerto en el host (puertos distintos a los del laboratorio original).
         // sitio4 no tiene código en el repositorio (su html/ está vacío), por eso no se escanea.
         LAB_SITES       = 'sitio1:55340 sitio2:55350 sitio3:55360'
+        // Quality gate: máximo de hallazgos graves permitidos para desplegar
+        GATE_SEMGREP_MAX_ERROR = '0'     // hallazgos Semgrep de severidad ERROR
+        GATE_ZAP_MAX_HIGH      = '0'     // alertas ZAP de riesgo High (sumando los 3 sitios)
+        // Preproducción: copia persistente del código aprobado, con nombres y puertos propios
+        PRE_DIR         = '/home/jenkins/Projecte/jenkins/workspace/preproduccion'
+        PRE_COMPOSE     = 'docker compose -p examenweb-pre -f /home/jenkins/Projecte/jenkins/workspace/preproduccion/docker-compose.yml -f /home/jenkins/Projecte/jenkins/workspace/preproduccion/compose.pre.yml'
+        PRE_SITES       = 'sitio1:56340 sitio2:56350 sitio3:56360'
     }
 
     stages {
@@ -34,7 +41,7 @@ pipeline {
             steps {
                 // El workspace persiste entre builds: borrar los resultados del anterior para que
                 // Semgrep no analice los informes de ZAP ni se archiven ficheros viejos.
-                sh 'rm -rf zap semgrep.json semgrep.sarif semgrep.txt compose.ci.yml'
+                sh 'rm -rf zap semgrep.json semgrep.sarif semgrep.txt compose.ci.yml compose.pre.yml'
                 checkout scm   // mismo repo que la tarea: evita builds en bucle con pollSCM
                 // Los datos de MySQL (db_data) deben quedar exactamente como en el repositorio: MySQL
                 // modifica ficheros con seguimiento y crea otros nuevos (redo logs, binlogs); si se
@@ -207,6 +214,81 @@ jobs:
                     reportTitles: 'Sitio 1,Sitio 2,Sitio 3',
                     keepAll: true, alwaysLinkToLastBuild: true, allowMissing: true
                 ])
+            }
+        }
+
+        stage('Quality gate') {
+            steps {
+                script {
+                    // Se cuentan los hallazgos graves de los informes; si superan el máximo, el build
+                    // FALLA y las etapas siguientes (el despliegue) no se ejecutan.
+                    def semgrepError = sh(returnStdout: true,
+                        script: "cat semgrep.json 2>/dev/null | grep -o '\"severity\": *\"ERROR\"' | wc -l").trim() as int
+                    def zapHigh = 0
+                    ['sitio1', 'sitio2', 'sitio3'].each { s ->
+                        def n = sh(returnStdout: true,
+                            script: "cat zap/${s}.json 2>/dev/null | grep -c '\"riskcode\": *\"3\"' || true").trim() as int
+                        echo "  ZAP ${s}: High=${n}"
+                        zapHigh += n
+                    }
+                    echo "Quality gate: Semgrep ERROR=${semgrepError} (máx. ${env.GATE_SEMGREP_MAX_ERROR}), ZAP High=${zapHigh} (máx. ${env.GATE_ZAP_MAX_HIGH})"
+                    if (semgrepError > (env.GATE_SEMGREP_MAX_ERROR as int) || zapHigh > (env.GATE_ZAP_MAX_HIGH as int)) {
+                        error("Quality gate NO superado: el código no se despliega a preproducción")
+                    }
+                    echo 'Quality gate superado: se despliega a preproducción'
+                }
+            }
+        }
+
+        stage('Deploy preproducción') {
+            steps {
+                // Solo se llega aquí si el quality gate se ha superado.
+                // Se copia el código aprobado a una carpeta propia: así un build posterior que no pase
+                // los controles no cambia lo que hay desplegado en preproducción.
+                writeFile file: 'compose.pre.yml', text: '''
+services:
+  db1: { container_name: pre_mysql_examen_1, restart: unless-stopped }
+  db2: { container_name: pre_mysql_examen_2, restart: unless-stopped }
+  db3: { container_name: pre_mysql_examen_3, restart: unless-stopped }
+  db4: { container_name: pre_mysql_examen_4, restart: "no" }
+  web1: { container_name: pre_web_examen_1, restart: unless-stopped, ports: !override ["56340:80"] }
+  web2: { container_name: pre_web_examen_2, restart: unless-stopped, ports: !override ["56350:80"] }
+  web3: { container_name: pre_web_examen_3, restart: unless-stopped, ports: !override ["56360:80"] }
+  web4: { container_name: pre_web_examen_4, restart: "no", ports: !override ["56370:80"] }
+'''
+                sh '''
+                    # Apagar el laboratorio de pruebas para liberar memoria antes de desplegar
+                    ${LAB_COMPOSE} down --remove-orphans || true
+
+                    # Sustituir la versión anterior de preproducción por la aprobada en este build
+                    [ -f "${PRE_DIR}/compose.pre.yml" ] && ${PRE_COMPOSE} down --remove-orphans || true
+                    rm -rf "${PRE_DIR}"
+                    mkdir -p "${PRE_DIR}"
+                    cp -a ExamenWeb/. "${PRE_DIR}/"
+                    cp compose.pre.yml "${PRE_DIR}/"
+                    git log -1 --format="%h %an %ad %s" --date=iso > "${PRE_DIR}/VERSION"
+
+                    # Solo los 3 sitios con código (sitio4 está vacío)
+                    ${PRE_COMPOSE} up -d --build web1 web2 web3
+
+                    echo "Esperando a las bases de datos de preproducción..."
+                    for n in 1 2 3; do
+                        for i in $(seq 1 30); do
+                            docker exec pre_mysql_examen_$n mysqladmin ping -uroot -proot_pass_examen$n --silent 2>/dev/null && break
+                            sleep 2
+                        done
+                        docker exec pre_mysql_examen_$n mysqladmin ping -uroot -proot_pass_examen$n --silent 2>/dev/null || { echo "MySQL $n de preproducción no responde"; exit 1; }
+                    done
+
+                    echo "Comprobando preproducción..."
+                    for s in ${PRE_SITES}; do
+                        port=${s#*:}
+                        code=$(docker run --rm --network host ${ZAP_IMAGE} curl -s -o /dev/null -w '%{http_code}' http://localhost:$port/)
+                        echo "  ${s%%:*} -> http://localhost:$port -> HTTP $code"
+                        [ "$code" = "200" ] || { echo "Preproducción no responde en ${s%%:*}"; exit 1; }
+                    done
+                    echo "Versión desplegada en preproducción: $(cat ${PRE_DIR}/VERSION)"
+                '''
             }
         }
     }
