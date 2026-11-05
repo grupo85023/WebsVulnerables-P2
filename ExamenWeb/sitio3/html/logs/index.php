@@ -137,9 +137,9 @@ if (!isset($_COOKIE[$auth_cookie]) || $_COOKIE[$auth_cookie] !== $auth_hash) {
                             // VULNERABLE: Sin sanitización - XSS Stored
                             // El autor y el mensaje se muestran directamente sin htmlspecialchars
                             echo "<div class='log-line'>";
-                            echo "<span style='color: var(--lcars-orange);'>[Stardate " . $row['stardate'] . "]</span> ";
-                            echo "<strong>" . $row['author'] . ":</strong> ";
-                            echo $row['message'];
+                               echo "<span style='color: var(--lcars-orange);'>[Stardate " . htmlspecialchars($row['stardate']) . "]</span> ";
+   echo "<strong>" . htmlspecialchars($row['author'], ENT_QUOTES, 'UTF-8') . ":</strong> ";
+   echo htmlspecialchars($row['message'], ENT_QUOTES, 'UTF-8');
                             echo "</div>";
                         }
                     } else {
